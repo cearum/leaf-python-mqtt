@@ -82,9 +82,9 @@ def on_message(client, userdata, msg):
     
     elif control_subtopic == 'location':
       logging.info('location request: ' + control_message)
-      if control_message == '1':
-        get_lat_long()
       if control_message == '2':
+        get_lat_long()
+      if control_message == '1':
         update_lat_long()
 
 
