@@ -35,12 +35,20 @@ By default the following control MQTT topics are used
 `leaf/control/update`
 
 Publishing `1` to the update control sub-topic will request and update from the car.
+Publishing `2` to the update control sub-topic will just update the information from the server (not from vehicle)
 
 **Caution: this will activate the cars GSM telematic modem. Frequent poilling is not recomended as it could drain the cars 12V aux batttery**
 
 `leaf/control/climate`
 
 Publishing `1` to the `climate` control sub-topic will turn on the cars climate control. Publishing `0` will turn it off. *Currently there does not seem to be anyway to retrieve the status of the climate control from the pycarwings2 lib*
+
+`leaf/control/location`
+
+Publishing `1` to the update control sub-topic will request and update from the car.
+Publishing `2` to the update control sub-topic will just update the information from the server (not from vehicle)
+
+**Caution: this will activate the cars GSM telematic modem. Frequent poilling is not recomended as it could drain the cars 12V aux batttery**
 
 ***
 
