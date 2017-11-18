@@ -132,11 +132,11 @@ def update_lat_long():
   if l == None:
     return None
     
-  logging.info("Updating lat/long")
+  logging.info("Updating lat/long, Wait 60 seconds")
   result_key = l.request_vehicle_lat_long_update()
-  print ("Lat Long Result Key: ", result_key)
+  time.sleep(60)
   update_location_result = l.get_status_from_lat_long_update(result_key)
-  logging.info(update_location_result)
+  mqtt_publish(update_location_result, "location")
 
 def get_lat_long():
   
@@ -146,8 +146,8 @@ def get_lat_long():
   
   logging.info("Checking lat/long")
   result_key = l.get_vehicle_lat_long()
-  logging.info("Lat: %s" % result_key.lat)
-  logging.info("Long: %s" % result_key.long)
+  logging.info("Lat: %s" % result_key.latitude)
+  logging.info("Long: %s" % result_key.longitude)
   time.sleep(10)
   mqtt_publish(result_key, "location")
         
@@ -244,7 +244,7 @@ def get_leaf_status(l=None):
       mqtt_publish(leaf_info)
 
       logging.info("End update time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-      logging.info("Schedule API update every " + GET_UPDATE_INTERVAL + "min")
+      #logging.info("Schedule API update every " + GET_UPDATE_INTERVAL + "min")
       return (leaf_info)
   else:
       logging.info("Did not get any response from the API")
@@ -260,7 +260,7 @@ def mqtt_publish(leaf_info, info_type="battery"):
     #adjust the time from UTC to local Time Zone before sending
     time_to_publish = ""
     if adjust_time_bool:
-      time_to_publish = adjustTime(leaf_info.answer["BatteryStatusRecords"]["NotificationDateAndTime"])
+      time_to_publish = adjustTime(leaf_info.answer["BatteryStatusRecords"]["NotificationDateAndTime"], local_time_zone)
     else:
       time_to_publish = leaf_info.answer["BatteryStatusRecords"]["NotificationDateAndTime"]
     
@@ -282,15 +282,15 @@ def mqtt_publish(leaf_info, info_type="battery"):
       client.publish(mqtt_status_topic + "/connected", leaf_info.is_connected)
       
   elif info_type == "location":
-    client.publish(mqtt_status_topic + "/location_lat", leaf_info.lat)
+    client.publish(mqtt_status_topic + "/location_lat", leaf_info.latitude)
     time.sleep(1)
-    client.publish(mqtt_status_topic + "/location_long", leaf_info.long)
+    client.publish(mqtt_status_topic + "/location_long", leaf_info.longitude)
     time.sleep(1)
     
     #adjust the time from UTC to local Time Zone before sending
     time_to_publish = ""
     if adjust_time_bool:
-      time_to_publish = adjustTime(leaf_info.receivedDate)
+      time_to_publish = adjustTime(leaf_info.receivedDate, local_time_zone)
     else:
       time_to_publish = leaf_info.receivedDate
       
@@ -298,19 +298,34 @@ def mqtt_publish(leaf_info, info_type="battery"):
 
 
 def adjustTime(timeToAdjust_UTC, NewTimeZone):
+  
   try:
     localFormat = "%Y/%m/%d %H:%M"
     utcmoment_naive = datetime.strptime(timeToAdjust_UTC, localFormat)
+  except ValueError:
+    #pass
+    logging.error("Incorrect Time Format ("+localFormat+") from " + timeToAdjust_UTC)
+    try:
+      #Example: 'Nov 18, 2017 02:58 PM'
+      print("timeToAdjust_UTC: ", timeToAdjust_UTC)
+      localFormat = "%b %d, %Y %I:%M %p"
+      utcmoment_naive = datetime.strptime(timeToAdjust_UTC, localFormat)
+    except ValueError:
+      logging.error("Incorrect Time Format ("+localFormat+") from " + timeToAdjust_UTC)
+      return timeToAdjust_UTC
+    
+  try:
     utcmoment = utcmoment_naive.replace(tzinfo=pytz.utc)
     updatedTimeZone = pytz.timezone(NewTimeZone)
     updatedDatetime = utcmoment.astimezone(updatedTimeZone)
     
-    return updatedDatetime
+    return updatedDatetime.strftime(localFormat)
     
         
   except pytz.exceptions.NonExistentTimeError as e:
     logging.error("NonExistentTimeError")
     return timeToAdjust_UTC
+
 #########################################################################################################################
 # Run on first time
 #get_leaf_status()
