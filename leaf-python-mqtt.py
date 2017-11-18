@@ -36,9 +36,21 @@ if os.path.exists(config_file_path):
   mqtt_control_topic = parser.get('get-leaf-info', 'mqtt_control_topic')
   mqtt_status_topic =  parser.get('get-leaf-info', 'mqtt_status_topic')
   nissan_region_code = parser.get('get-leaf-info', 'nissan_region_code')
-  GET_UPDATE_INTERVAL = parser.get('get-leaf-info', 'api_update_interval_min')
+  VEHICLE_UPDATE_INTERVAL = parser.get('get-leaf-info', 'vehicle_update_interval_min')
+  VEHICLE_STATUS_UPDATE_INTERVAL = parser.get('get-leaf-info', 'status_update_interval_min')
+  LOCATION_UPDATE_INTERVAL = parser.get('get-leaf-info', 'location_update_interval_min')
+  LOCATION_STATUS_UPDATE_INTERVAL = parser.get('get-leaf-info', 'location_status_update_interval_min')
   local_time_zone = parser.get('get-leaf-info', 'local_time_zone')
-  logging.info("updating data from API every " + GET_UPDATE_INTERVAL +"min")
+  
+  if parser.get('get-leaf-info', 'adjust_time_bool') == '0':
+      adjust_time_bool = False
+  elif parser.get('get-leaf-info', 'adjust_time_bool') == '1':
+      adjust_time_bool = True
+  else:
+      logging.error("Incorrect input for time zone adjustment, please correct config file.")
+      exit()
+      
+  #logging.info("updating data from API every " + GET_UPDATE_INTERVAL +"min")
 else:
   logging.error("ERROR: Config file not found " + config_file_path)
   quit()
@@ -147,6 +159,7 @@ def climate_control(climate_control_instruction):
   if l == None:
     return
 
+  #TODO - use the result as this hasn't been worked out yet
   if climate_control_instruction == 2:
     logging.info("Checking Climate Control Schedule")
     result_key = l.get_climate_control_schedule()
@@ -245,7 +258,13 @@ def mqtt_publish(leaf_info, info_type="battery"):
   if info_type == "battery":
     
     #adjust the time from UTC to local Time Zone before sending
-    client.publish(mqtt_status_topic + "/last_updated", adjustTime(leaf_info.answer["BatteryStatusRecords"]["NotificationDateAndTime"]))
+    time_to_publish = ""
+    if adjust_time_bool:
+      time_to_publish = adjustTime(leaf_info.answer["BatteryStatusRecords"]["NotificationDateAndTime"])
+    else:
+      time_to_publish = leaf_info.answer["BatteryStatusRecords"]["NotificationDateAndTime"]
+    
+    client.publish(mqtt_status_topic + "/last_updated", time_to_publish)
     
     time.sleep(1)
     client.publish(mqtt_status_topic + "/battery_percent", leaf_info.battery_percent)
@@ -261,13 +280,22 @@ def mqtt_publish(leaf_info, info_type="battery"):
       client.publish(mqtt_status_topic + "/connected", "No")
     else:
       client.publish(mqtt_status_topic + "/connected", leaf_info.is_connected)
+      
   elif info_type == "location":
     client.publish(mqtt_status_topic + "/location_lat", leaf_info.lat)
     time.sleep(1)
     client.publish(mqtt_status_topic + "/location_long", leaf_info.long)
     time.sleep(1)
-     #adjust the time from UTC to local Time Zone before sending
-    client.publish(mqtt_status_topic + "/location_last_updated", adjustTime(leaf_info.receivedDate))
+    
+    #adjust the time from UTC to local Time Zone before sending
+    time_to_publish = ""
+    if adjust_time_bool:
+      time_to_publish = adjustTime(leaf_info.receivedDate)
+    else:
+      time_to_publish = leaf_info.receivedDate
+      
+    client.publish(mqtt_status_topic + "/location_last_updated", time_to_publish)
+
 
 def adjustTime(timeToAdjust_UTC, NewTimeZone):
   try:
@@ -288,9 +316,26 @@ def adjustTime(timeToAdjust_UTC, NewTimeZone):
 #get_leaf_status()
 
 # Then schedule
-logging.info("Schedule API update every " + GET_UPDATE_INTERVAL + "min")
-schedule.every(int(GET_UPDATE_INTERVAL)).minutes.do(get_leaf_update)
-#schedule.every(int(GET_UPDATE_INTERVAL)).minutes.do(get_lat_long)
+try:
+  if int(VEHICLE_UPDATE_INTERVAL) > 0:
+    logging.info("Schedule Battery Satus Update (From Vehicle and Server) every " + VEHICLE_UPDATE_INTERVAL + "min")
+    schedule.every(int(VEHICLE_UPDATE_INTERVAL)).minutes.do(get_leaf_update)
+    
+  if int(VEHICLE_STATUS_UPDATE_INTERVAL) > 0:
+    logging.info("Schedule Battery Satus Update (From Server Only) every " + VEHICLE_STATUS_UPDATE_INTERVAL + "min")
+    schedule.every(int(VEHICLE_STATUS_UPDATE_INTERVAL)).minutes.do(get_leaf_status)
+    
+  if int(LOCATION_UPDATE_INTERVAL) > 0:
+    logging.info("Schedule Location update (From Vehicle and Server) every " + LOCATION_UPDATE_INTERVAL + "min")
+    schedule.every(int(LOCATION_UPDATE_INTERVAL)).minutes.do(update_lat_long)
+    
+  if int(LOCATION_STATUS_UPDATE_INTERVAL) > 0:
+    logging.info("Schedule Location update (From Server Only) every " + LOCATION_STATUS_UPDATE_INTERVAL + "min")
+    schedule.every(int(LOCATION_STATUS_UPDATE_INTERVAL)).minutes.do(get_lat_long)
+except ValueError:
+  logging.error("Incorrect Value in update interval from configuration. Please check configuration and retry.")
+  exit()
+
 
 while True:
     schedule.run_pending()
